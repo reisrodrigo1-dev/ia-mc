@@ -1,0 +1,165 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Função: verificar se é super admin (com fallback)
+    function isSuperAdmin() {
+      return request.auth != null && (
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "super_admin"
+      );
+    }
+    
+    // Função: verificar se usuário está no setor (com fallback)
+    function isInSector(sectorId) {
+      return request.auth != null && (
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.sectorId == sectorId
+      );
+    }
+    
+    // Função: verificar se é admin do setor
+    function isSectorAdmin(sectorId) {
+      return request.auth != null &&
+             exists(/databases/$(database)/documents/sectors/$(sectorId)) &&
+             request.auth.uid in get(/databases/$(database)/documents/sectors/$(sectorId)).data.adminIds;
+    }
+    
+    // Usuários
+    match /users/{userId} {
+      // PERMITIR LEITURA E CRIAÇÃO PARA TODOS AUTENTICADOS
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && (request.auth.uid == userId || isSuperAdmin());
+    }
+    
+    // Setores
+    match /sectors/{sectorId} {
+      // Permitir leitura sem autenticação (necessário para página de registro)
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if request.auth != null && isSuperAdmin();
+    }
+    
+    // Chats
+    match /chats/{chatId} {
+      // Permitir leitura se:
+      // - É o dono do chat (conversas pessoais apenas para o dono)
+      // - É super admin
+      // - O chat é do setor e o usuário está nesse setor
+      allow read: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        isSuperAdmin() ||
+        (resource.data.visibility == 'sector' && 
+         resource.data.sectorId != null && 
+         isInSector(resource.data.sectorId))
+      );
+      
+      // Permitir criação para qualquer usuário autenticado
+      allow create: if request.auth != null;
+      
+      // Permitir atualização apenas se:
+      // - É o dono do chat
+      // - É super admin
+      allow update: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        isSuperAdmin()
+      );
+      
+      // Permitir deleção apenas para o dono ou super admin
+      allow delete: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        isSuperAdmin()
+      );
+      
+      // Mensagens dentro do chat
+      match /messages/{messageId} {
+        // Permitir leitura se tem acesso ao chat pai
+        allow read: if request.auth != null && (
+          get(/databases/$(database)/documents/chats/$(chatId)).data.ownerId == request.auth.uid ||
+          isSuperAdmin() ||
+          (get(/databases/$(database)/documents/chats/$(chatId)).data.visibility == 'sector' && 
+           get(/databases/$(database)/documents/chats/$(chatId)).data.sectorId != null && 
+           isInSector(get(/databases/$(database)/documents/chats/$(chatId)).data.sectorId))
+        );
+        
+        // Permitir criação se tem acesso ao chat pai
+        allow create: if request.auth != null && (
+          get(/databases/$(database)/documents/chats/$(chatId)).data.ownerId == request.auth.uid ||
+          isSuperAdmin() ||
+          (get(/databases/$(database)/documents/chats/$(chatId)).data.visibility == 'sector' && 
+           get(/databases/$(database)/documents/chats/$(chatId)).data.sectorId != null && 
+           isInSector(get(/databases/$(database)/documents/chats/$(chatId)).data.sectorId))
+        );
+        
+        allow update: if request.auth != null;
+        allow delete: if request.auth != null;
+      }
+    }
+    
+    // Agentes
+    match /agents/{agentId} {
+      // Permitir leitura se:
+      // - É o dono do agente
+      // - É super admin
+      // - O agente é do setor e o usuário está nesse setor
+      allow read: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        isSuperAdmin() ||
+        (resource.data.visibility == 'sector' && 
+         resource.data.sectorId != null && 
+         isInSector(resource.data.sectorId))
+      );
+      
+      // Permitir criação para qualquer usuário autenticado
+      allow create: if request.auth != null;
+      
+      // Permitir atualização apenas se:
+      // - É o dono do agente
+      // - É super admin
+      allow update: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        isSuperAdmin()
+      );
+      
+      // Permitir deleção apenas para o dono ou super admin
+      allow delete: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        isSuperAdmin()
+      );
+    }
+    
+    // Prompts
+    match /prompts/{promptId} {
+      // Permitir leitura se:
+      // - É o dono do prompt
+      // - É super admin
+      // - O prompt é do setor e o usuário está nesse setor
+      allow read: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        isSuperAdmin() ||
+        (resource.data.visibility == 'sector' && 
+         resource.data.sectorId != null && 
+         isInSector(resource.data.sectorId))
+      );
+      
+      // Permitir criação para qualquer usuário autenticado
+      allow create: if request.auth != null;
+      
+      // Permitir atualização apenas se:
+      // - É o dono do prompt
+      // - É super admin
+      allow update: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        isSuperAdmin()
+      );
+      
+      // Permitir deleção apenas para o dono ou super admin
+      allow delete: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        isSuperAdmin()
+      );
+    }
+  }
+}
