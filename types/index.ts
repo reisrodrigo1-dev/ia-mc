@@ -6,6 +6,7 @@ export type MessageRole = 'user' | 'assistant' | 'system';
 
 export interface User {
   id: string;
+  uid?: string;
   email: string;
   name: string;
   avatar?: string;
@@ -94,3 +95,58 @@ export interface ChatMessage {
   role: MessageRole;
   content: string;
 }
+
+export interface WhatsAppConnection {
+  id: string;
+  name: string;
+  phoneNumber?: string | null;
+  qrCode?: string | null;
+  status: 'disconnected' | 'connecting' | 'qr-code' | 'connected' | 'error';
+  visibility: 'personal' | 'sector';
+  ownerId: string;
+  ownerName?: string;
+  sectorId: string | null;
+  lastActivity?: Date | Timestamp;
+  createdAt: Date | Timestamp;
+  updatedAt?: Date | Timestamp;
+}
+
+export interface WhatsAppMessage {
+  id: string;
+  connectionId: string;
+  chatId: string;
+  from: string;
+  to: string;
+  message: string;
+  isFromMe: boolean;
+  timestamp: Date | Timestamp;
+  status: 'pending' | 'sent' | 'delivered' | 'read' | 'error';
+}
+
+export interface WhatsAppTraining {
+  id: string;
+  connectionId: string;
+  type: 'document' | 'qna' | 'prompt' | 'url';
+  title: string;
+  content: string;
+  metadata?: any;
+  ownerId: string;
+  createdAt: Date | Timestamp;
+  updatedAt?: Date | Timestamp;
+}
+
+export interface WhatsAppChat {
+  id: string;
+  connectionId: string;
+  contactName?: string;
+  contactNumber: string;
+  lastMessage?: string;
+  lastMessageAt?: Date | Timestamp;
+  status: 'active' | 'waiting' | 'closed';
+  isAiActive: boolean;
+  tags?: string[];
+  notes?: string;
+  createdAt: Date | Timestamp;
+  updatedAt?: Date | Timestamp;
+}
+

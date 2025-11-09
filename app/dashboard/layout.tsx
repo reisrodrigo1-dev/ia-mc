@@ -17,6 +17,12 @@ import {
   Sparkles,
   Home,
   Wand2,
+  ChevronDown,
+  ChevronRight,
+  Phone,
+  BookOpen,
+  MessageCircle,
+  BarChart3,
 } from 'lucide-react';
 import { useState } from 'react';
 import Link from 'next/link';
@@ -27,6 +33,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { user, signOut } = useAuth();
   const { isSuperAdmin, canCreateSector } = usePermissions();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [whatsappOpen, setWhatsappOpen] = useState(false);
 
   const handleSignOut = async () => {
     await signOut();
@@ -39,6 +46,13 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     { name: 'Agentes', href: '/dashboard/agents', icon: Bot },
     { name: 'Prompts', href: '/dashboard/prompts', icon: FileText },
     { name: 'Assistente de Prompt', href: '/dashboard/prompt-assistant', icon: Wand2 },
+  ];
+
+  const whatsappSubMenu = [
+    { name: 'Conexões', href: '/dashboard/whatsapp/connections', icon: Phone },
+    { name: 'Treinamento', href: '/dashboard/whatsapp/training', icon: BookOpen },
+    { name: 'Conversas', href: '/dashboard/whatsapp/chats', icon: MessageCircle },
+    { name: 'Analytics', href: '/dashboard/whatsapp/analytics', icon: BarChart3 },
   ];
 
   if (canCreateSector) {
@@ -92,6 +106,47 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               </Link>
             );
           })}
+          
+          {/* WhatsApp Dropdown */}
+          <div>
+            <button
+              onClick={() => setWhatsappOpen(!whatsappOpen)}
+              className="w-full flex items-center justify-between gap-4 px-4 py-4 rounded-xl transition-all duration-200 text-gray-700 hover:bg-gray-100 hover:text-orange-600"
+            >
+              <div className="flex items-center gap-4">
+                <Phone className="w-5 h-5 text-gray-500" />
+                <span className="font-medium">WhatsApp</span>
+              </div>
+              {whatsappOpen ? (
+                <ChevronDown className="w-4 h-4 text-gray-500" />
+              ) : (
+                <ChevronRight className="w-4 h-4 text-gray-500" />
+              )}
+            </button>
+            
+            {whatsappOpen && (
+              <div className="mt-1 ml-4 space-y-1">
+                {whatsappSubMenu.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = pathname === item.href;
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
+                        isActive
+                          ? 'bg-orange-600 text-white shadow-lg'
+                          : 'text-gray-700 hover:bg-gray-100 hover:text-orange-600'
+                      }`}
+                    >
+                      <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-gray-500'}`} />
+                      <span className="font-medium text-sm">{item.name}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </nav>
 
         {/* User Info */}

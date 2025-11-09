@@ -161,5 +161,52 @@ service cloud.firestore {
         isSuperAdmin()
       );
     }
+    
+    // Conexões WhatsApp
+    match /whatsapp_connections/{connectionId} {
+      // Permitir leitura se:
+      // - É o dono da conexão
+      // - É super admin
+      // - A conexão é do setor e o usuário está nesse setor
+      allow read: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        isSuperAdmin() ||
+        (resource.data.visibility == 'sector' && 
+         resource.data.sectorId != null && 
+         isInSector(resource.data.sectorId))
+      );
+      
+      // Permitir criação para qualquer usuário autenticado
+      allow create: if request.auth != null;
+      
+      // Permitir atualização apenas se:
+      // - É o dono da conexão
+      // - É super admin
+      allow update: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        isSuperAdmin()
+      );
+      
+      // Permitir deleção apenas para o dono ou super admin
+      allow delete: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        isSuperAdmin()
+      );
+    }
+    
+    // Treinamentos WhatsApp - PERMITIR ACESSO TOTAL (backend precisa ler para IA)
+    match /whatsapp_training/{trainingId} {
+      allow read, write: if true;
+    }
+    
+    // Chats WhatsApp - PERMITIR ACESSO TOTAL (backend e frontend)
+    match /whatsapp_chats/{chatId} {
+      allow read, write: if true;
+    }
+    
+    // Mensagens WhatsApp - PERMITIR ACESSO TOTAL (backend e frontend)
+    match /whatsapp_messages/{messageId} {
+      allow read, write: if true;
+    }
   }
 }
