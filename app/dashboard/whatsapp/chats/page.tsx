@@ -29,7 +29,9 @@ import {
   X,
   Bot,
   UserCircle,
-  Plus
+  Plus,
+  Trash2,
+  Edit2
 } from 'lucide-react';
 
 export default function WhatsAppChatsPage() {
@@ -45,6 +47,8 @@ export default function WhatsAppChatsPage() {
   const [newChatPhone, setNewChatPhone] = useState('');
   const [newChatName, setNewChatName] = useState('');
   const [creatingChat, setCreatingChat] = useState(false);
+  const [editingChatId, setEditingChatId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -151,10 +155,12 @@ export default function WhatsAppChatsPage() {
 
       // Real-time listener
       const unsubscribe = onSnapshot(q, (snapshot) => {
-        const loadedChats = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as WhatsAppChat[];
+        const loadedChats = snapshot.docs
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }))
+          .filter((chat: any) => !chat.deleted) as WhatsAppChat[]; // Filtrar chats deletados
 
         setChats(loadedChats);
       });
@@ -178,10 +184,12 @@ export default function WhatsAppChatsPage() {
 
       // Real-time listener
       const unsubscribe = onSnapshot(q, (snapshot) => {
-        const loadedMessages = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as WhatsAppMessage[];
+        const loadedMessages = snapshot.docs
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }))
+          .filter((msg: any) => !msg.deleted) as WhatsAppMessage[]; // Filtrar mensagens deletadas
 
         setMessages(loadedMessages);
       });
@@ -317,6 +325,72 @@ export default function WhatsAppChatsPage() {
     } catch (error) {
       console.error('Erro ao alternar IA:', error);
     }
+  };
+
+  const handleDeleteChat = async (chatId: string) => {
+    if (!confirm('Tem certeza que deseja excluir esta conversa? Todas as mensagens serão perdidas.')) {
+      return;
+    }
+
+    try {
+      // Excluir todas as mensagens do chat
+      const messagesRef = collection(db, 'whatsapp_messages');
+      const messagesQuery = query(messagesRef, where('chatId', '==', chatId));
+      const messagesSnapshot = await getDocs(messagesQuery);
+      
+      const deletePromises = messagesSnapshot.docs.map(doc => 
+        updateDoc(doc.ref, { deleted: true }) // Soft delete
+      );
+      
+      await Promise.all(deletePromises);
+
+      // Excluir o chat (soft delete)
+      await updateDoc(doc(db, 'whatsapp_chats', chatId), {
+        deleted: true,
+        deletedAt: Timestamp.now(),
+      });
+
+      // Se o chat excluído estava selecionado, limpar seleção
+      if (selectedChat?.id === chatId) {
+        setSelectedChat(null);
+        setMessages([]);
+      }
+
+      alert('Conversa excluída com sucesso!');
+    } catch (error) {
+      console.error('Erro ao excluir conversa:', error);
+      alert('Erro ao excluir conversa');
+    }
+  };
+
+  const handleStartEditName = (chat: WhatsAppChat) => {
+    setEditingChatId(chat.id);
+    setEditingName(chat.contactName || chat.contactNumber);
+  };
+
+  const handleSaveEditName = async (chatId: string) => {
+    if (!editingName.trim()) {
+      alert('Nome não pode estar vazio');
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, 'whatsapp_chats', chatId), {
+        contactName: editingName.trim(),
+        updatedAt: Timestamp.now(),
+      });
+
+      setEditingChatId(null);
+      setEditingName('');
+    } catch (error) {
+      console.error('Erro ao editar nome:', error);
+      alert('Erro ao editar nome');
+    }
+  };
+
+  const handleCancelEditName = () => {
+    setEditingChatId(null);
+    setEditingName('');
   };
 
   const handleCreateNewChat = async () => {
@@ -543,24 +617,67 @@ export default function WhatsAppChatsPage() {
                     <User className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-gray-900">
-                      {selectedChat.contactName || selectedChat.contactNumber}
-                    </h3>
-                    <p className="text-sm text-gray-600">{selectedChat.contactNumber}</p>
+                    {editingChatId === selectedChat.id ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          className="px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                          placeholder="Nome do contato"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => handleSaveEditName(selectedChat.id)}
+                          className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                        >
+                          Salvar
+                        </button>
+                        <button
+                          onClick={handleCancelEditName}
+                          className="px-3 py-1 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 text-sm"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold text-gray-900">
+                          {selectedChat.contactName || selectedChat.contactNumber}
+                        </h3>
+                        <button
+                          onClick={() => handleStartEditName(selectedChat)}
+                          className="p-1 hover:bg-gray-100 rounded"
+                          title="Editar nome"
+                        >
+                          <Edit2 className="w-4 h-4 text-gray-600" />
+                        </button>
+                      </div>
+                    )}
+                    <p className="text-sm text-gray-500">{selectedChat.contactNumber}</p>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   <button
                     onClick={() => toggleAI(selectedChat.id, selectedChat.isAiActive)}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                       selectedChat.isAiActive
-                        ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        ? 'bg-green-600 text-white hover:bg-green-700'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                     }`}
+                    title={selectedChat.isAiActive ? 'Desligar IA' : 'Ligar IA'}
                   >
-                    <Bot className="w-5 h-5" />
-                    IA {selectedChat.isAiActive ? 'Ativa' : 'Inativa'}
+                    <Bot className="w-4 h-4" />
+                    <span className="text-sm font-medium">
+                      {selectedChat.isAiActive ? 'IA Ligada' : 'Ligar IA'}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => handleDeleteChat(selectedChat.id)}
+                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title="Excluir conversa"
+                  >
+                    <Trash2 className="w-5 h-5" />
                   </button>
                 </div>
               </div>
