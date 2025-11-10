@@ -34,6 +34,8 @@ import {
   Edit2
 } from 'lucide-react';
 
+import { getTrainingData } from '@/lib/whatsapp/training';
+
 export default function WhatsAppChatsPage() {
   const { user } = useAuth();
   const [connections, setConnections] = useState<WhatsAppConnection[]>([]);
@@ -49,7 +51,10 @@ export default function WhatsAppChatsPage() {
   const [creatingChat, setCreatingChat] = useState(false);
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  const [connectionStatus, setConnectionStatus] = useState<string>('checking');
+  const [isRestoring, setIsRestoring] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [activeTraining, setActiveTraining] = useState<any>(null);
 
   useEffect(() => {
     loadConnections();
@@ -66,12 +71,15 @@ export default function WhatsAppChatsPage() {
   const checkAndRestoreConnection = async () => {
     if (!selectedConnectionId) return;
 
+    setConnectionStatus('checking');
     try {
       // Verificar status da conexão
       const statusResponse = await fetch(`/api/whatsapp/connect?connectionId=${selectedConnectionId}`);
       const statusData = await statusResponse.json();
 
       console.log('🔍 Status da conexão:', statusData);
+
+      setConnectionStatus(statusData.status || 'unknown');
 
       // Se não estiver conectado, tentar restaurar automaticamente
       if (!statusData.connected && statusData.status !== 'connected' && !statusData.qrCode) {
@@ -89,18 +97,29 @@ export default function WhatsAppChatsPage() {
 
         if (restoreResponse.ok) {
           console.log('✅ Conexão restaurada automaticamente');
+          setConnectionStatus('connecting');
         } else {
           console.warn('⚠️ Não foi possível restaurar a conexão automaticamente');
         }
       }
     } catch (error) {
       console.error('Erro ao verificar/restaurar conexão:', error);
+      setConnectionStatus('error');
     }
   };
 
   useEffect(() => {
     if (selectedChat) {
       loadMessages();
+      const fetchTraining = async () => {
+        try {
+          const training = await getTrainingData(selectedChat.connectionId);
+          setActiveTraining(training);
+        } catch (error) {
+          console.error('Erro ao carregar treinamento:', error);
+        }
+      };
+      fetchTraining();
     }
   }, [selectedChat]);
 
@@ -120,7 +139,6 @@ export default function WhatsAppChatsPage() {
       const q = query(
         connectionsRef,
         where('ownerId', '==', user.uid || user.id),
-        where('status', '==', 'connected'),
         orderBy('createdAt', 'desc')
       );
 
@@ -230,36 +248,55 @@ export default function WhatsAppChatsPage() {
       if (!response.ok) {
         const error = await response.json();
         console.error('❌ Erro do servidor:', error);
+        console.error('❌ Mensagem de erro:', error.error);
+        console.error('❌ Detalhes:', error.details);
         
-        if (error.error?.includes('não encontrada') || error.error?.includes('não está ativa')) {
+        // Se for erro de conexão fechada ou não encontrada, tentar restaurar
+        if (error.details?.includes('Connection Closed') || 
+            error.error?.includes('não encontrada') || 
+            error.error?.includes('não está ativa') || 
+            error.error?.includes('Status:')) {
           console.log('🔄 Tentando restaurar conexão automaticamente...');
+          setIsRestoring(true);
           
-          // Tentar restaurar sessão automaticamente
-          const restoreResponse = await fetch('/api/whatsapp/connect', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              connectionId: selectedChat.connectionId,
-            }),
-          });
+          try {
+            // Tentar restaurar sessão automaticamente
+            const restoreResponse = await fetch('/api/whatsapp/connect', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                connectionId: selectedChat.connectionId,
+              }),
+            });
 
-          if (restoreResponse.ok) {
-            console.log('✅ Conexão restaurada! Aguardando 8 segundos para estabilizar...');
-            
-            // Aguardar 8 segundos para a conexão estabelecer e estabilizar
-            await new Promise(resolve => setTimeout(resolve, 8000));
-            
-            // Verificar se realmente conectou
-            const checkResponse = await fetch(`/api/whatsapp/connect?connectionId=${selectedChat.connectionId}`);
-            const checkData = await checkResponse.json();
-            
-            if (!checkData.connected && checkData.status !== 'connected') {
-              throw new Error('Conexão não foi estabelecida. Aguarde mais alguns segundos e tente novamente.');
-            }
-            
-            // Tentar enviar novamente
+            if (restoreResponse.ok) {
+              console.log('✅ Conexão restaurada! Aguardando 10 segundos para estabilizar...');
+              
+              // Aguardar 10 segundos para a conexão estabelecer e estabilizar
+              await new Promise(resolve => setTimeout(resolve, 10000));
+              
+              // Verificar se realmente conectou (verificar múltiplas vezes)
+              let connected = false;
+              for (let i = 0; i < 3; i++) {
+                const checkResponse = await fetch(`/api/whatsapp/connect?connectionId=${selectedChat.connectionId}`);
+                const checkData = await checkResponse.json();
+                
+                console.log(`Verificação ${i + 1}/3:`, checkData.status);
+                
+                if (checkData.status === 'connected') {
+                  connected = true;
+                  break;
+                }
+                
+                // Aguardar mais 2 segundos entre verificações
+                if (i < 2) await new Promise(resolve => setTimeout(resolve, 2000));
+              }
+              
+              if (!connected) {
+                throw new Error('Conexão não foi estabelecida após múltiplas tentativas. Aguarde mais alguns segundos e tente novamente.');
+              }            // Tentar enviar novamente
             console.log('🔄 Tentando enviar novamente após restauração...');
             response = await fetch('/api/whatsapp/send', {
               method: 'POST',
@@ -273,19 +310,23 @@ export default function WhatsAppChatsPage() {
               }),
             });
 
-            if (!response.ok) {
-              const retryError = await response.json();
-              throw new Error('Conexão restaurada mas ainda não conseguiu enviar. A conexão pode estar instável. Tente novamente.');
+              if (!response.ok) {
+                const retryError = await response.json();
+                throw new Error('Conexão restaurada mas ainda não conseguiu enviar. A conexão pode estar instável. Tente novamente.');
+              }
+            } else {
+              throw new Error('Não foi possível restaurar a conexão. Vá em Conexões e clique em "Verificar Status".');
             }
-          } else {
-            throw new Error('Não foi possível restaurar a conexão. Vá em Conexões e clique em "Verificar Status".');
+          } catch (restoreError: any) {
+            console.error('Erro ao restaurar:', restoreError);
+            throw new Error(restoreError.message || 'Erro ao restaurar conexão');
+          } finally {
+            setIsRestoring(false);
           }
         } else {
           throw new Error(error.error || 'Erro ao enviar mensagem');
         }
-      }
-
-      console.log('✅ Mensagem enviada via API, salvando no Firestore...');
+      }      console.log('✅ Mensagem enviada via API, salvando no Firestore...');
 
       // Salvar mensagem no Firestore
       const newMessage: Omit<WhatsAppMessage, 'id'> = {
@@ -529,10 +570,25 @@ export default function WhatsAppChatsPage() {
             >
               {connections.map((conn) => (
                 <option key={conn.id} value={conn.id}>
-                  {conn.name}
+                  {conn.name} ({conn.status || 'desconhecido'})
                 </option>
               ))}
             </select>
+            
+            <span className={`ml-2 px-2 py-1 text-xs rounded-full ${
+              connectionStatus === 'connected' ? 'bg-green-100 text-green-800' :
+              connectionStatus === 'connecting' ? 'bg-yellow-100 text-yellow-800' :
+              connectionStatus === 'disconnected' ? 'bg-red-100 text-red-800' :
+              connectionStatus === 'qr-code' ? 'bg-blue-100 text-blue-800' :
+              'bg-gray-100 text-gray-800'
+            }`}>
+              {connectionStatus === 'connected' ? 'Conectado' :
+               connectionStatus === 'connecting' ? 'Conectando' :
+               connectionStatus === 'disconnected' ? 'Desconectado' :
+               connectionStatus === 'qr-code' ? 'Aguardando QR' :
+               connectionStatus === 'checking' ? 'Verificando' :
+               'Desconhecido'}
+            </span>
           </div>
         </div>
       </div>
@@ -655,6 +711,7 @@ export default function WhatsAppChatsPage() {
                       </div>
                     )}
                     <p className="text-sm text-gray-500">{selectedChat.contactNumber}</p>
+                    <p className="text-sm text-gray-500">Treinamento: {activeTraining?.name || 'Nenhum'}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -719,6 +776,12 @@ export default function WhatsAppChatsPage() {
 
             {/* Message Input */}
             <div className="bg-white border-t border-gray-200 p-4">
+              {isRestoring && (
+                <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
+                  <span className="text-sm text-blue-700">Restaurando conexão WhatsApp... Aguarde.</span>
+                </div>
+              )}
               <div className="flex items-center gap-3">
                 <input
                   type="text"
@@ -730,7 +793,7 @@ export default function WhatsAppChatsPage() {
                 />
                 <button
                   onClick={handleSendMessage}
-                  disabled={!messageInput.trim()}
+                  disabled={!messageInput.trim() || isRestoring}
                   className="px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Send className="w-5 h-5" />

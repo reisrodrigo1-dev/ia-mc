@@ -36,8 +36,10 @@ export async function POST(request: NextRequest) {
 
     if (status !== 'connected') {
       console.error('❌ Status não é "connected":', status);
+      console.error('❌ Socket user:', socket.user);
+      console.error('❌ Socket authState:', socket.authState);
       return NextResponse.json(
-        { error: `Conexão não está ativa. Status: ${status}` },
+        { error: `Conexão não está ativa. Status: ${status}. Socket existe: ${!!socket}, User: ${socket.user ? 'Sim' : 'Não'}` },
         { status: 400 }
       );
     }

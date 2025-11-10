@@ -394,6 +394,26 @@ Regras:
       isNewLogin
     });
 
+    // Inicializar Firebase para atualizar status
+    const { initializeApp, getApps } = await import('firebase/app');
+    const { getFirestore, doc, updateDoc } = await import('firebase/firestore');
+
+    let firebaseApp;
+    if (getApps().length === 0) {
+      firebaseApp = initializeApp({
+        apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+        authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+        projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+        storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+        messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+        appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+      });
+    } else {
+      firebaseApp = getApps()[0];
+    }
+
+    const db = getFirestore(firebaseApp);
+
     if (qr) {
       try {
         // Gerar QR Code em Base64
@@ -405,6 +425,12 @@ Regras:
         // Retornar QR Code via endpoint GET
         activeSessions.set(`${connectionId}_qr`, qrCodeDataUrl);
         activeSessions.set(`${connectionId}_status`, 'qr-code');
+
+        // Atualizar status no Firestore
+        await updateDoc(doc(db, 'whatsapp_connections', connectionId), {
+          status: 'qr-code',
+          updatedAt: new Date()
+        });
       } catch (error) {
         console.error(`❌ [${connectionId}] Erro ao gerar QR Code:`, error);
       }
@@ -433,6 +459,12 @@ Regras:
       
       activeSessions.set(`${connectionId}_status`, shouldReconnect ? 'disconnected' : 'error');
       activeSessions.delete(`${connectionId}_qr`);
+
+      // Atualizar status no Firestore
+      await updateDoc(doc(db, 'whatsapp_connections', connectionId), {
+        status: shouldReconnect ? 'disconnected' : 'error',
+        updatedAt: new Date()
+      });
 
       if (shouldReconnect) {
         // Reconectar automaticamente após 3 segundos
@@ -466,6 +498,14 @@ Regras:
       activeSessions.set(`${connectionId}_user`, sock.user);
       activeSessions.delete(`${connectionId}_qr`);
       
+      // Atualizar status no Firestore
+      await updateDoc(doc(db, 'whatsapp_connections', connectionId), {
+        status: 'connected',
+        phoneNumber: sock.user?.id.split(':')[0] || null,
+        userName: sock.user?.name || null,
+        updatedAt: new Date()
+      });
+      
       // Cancelar reconexão pendente se existir
       if (pendingReconnections.has(connectionId)) {
         clearTimeout(pendingReconnections.get(connectionId));
@@ -474,6 +514,12 @@ Regras:
     } else if (connection === 'connecting') {
       console.log(`🔄 [${connectionId}] Conectando ao WhatsApp...`);
       activeSessions.set(`${connectionId}_status`, 'connecting');
+
+      // Atualizar status no Firestore
+      await updateDoc(doc(db, 'whatsapp_connections', connectionId), {
+        status: 'connecting',
+        updatedAt: new Date()
+      });
     }
   });
 
