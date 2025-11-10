@@ -53,6 +53,36 @@ export default function WhatsAppConnectionsPage() {
     loadConnections();
   }, [user]);
 
+  // Polling para atualizar status das conexões a cada 5 segundos
+  useEffect(() => {
+    if (connections.length === 0) return;
+
+    const interval = setInterval(async () => {
+      for (const connection of connections) {
+        try {
+          const statusResponse = await fetch(`/api/whatsapp/connect?connectionId=${connection.id}`);
+          const statusData = await statusResponse.json();
+          
+          // Se o status real é diferente do que está no Firestore, atualizar
+          if (statusData.status && statusData.status !== connection.status) {
+            await updateDoc(doc(db, 'whatsapp_connections', connection.id), {
+              status: statusData.status,
+              phoneNumber: statusData.phoneNumber || connection.phoneNumber,
+              updatedAt: Timestamp.now(),
+            });
+          }
+        } catch (error) {
+          console.error(`Erro ao verificar status de ${connection.id}:`, error);
+        }
+      }
+      
+      // Recarregar lista após verificar todos
+      loadConnections();
+    }, 5000); // A cada 5 segundos
+
+    return () => clearInterval(interval);
+  }, [connections]);
+
   const loadConnections = async () => {
     if (!user) return;
     
