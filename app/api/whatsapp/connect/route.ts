@@ -14,6 +14,8 @@ import {
   pendingReconnections
 } from '@/app/api/whatsapp/whatsapp-sessions';
 
+export const runtime = 'nodejs';
+
 // Função para restaurar sessões existentes
 async function restoreExistingSessions() {
   const sessionsPath = path.join(process.cwd(), 'whatsapp_sessions');

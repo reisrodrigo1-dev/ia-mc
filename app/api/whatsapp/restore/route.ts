@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as path from 'path';
 import * as fs from 'fs';
 
+export const runtime = 'nodejs';
+
 export async function POST(request: NextRequest) {
   try {
     const { connectionId } = await request.json();

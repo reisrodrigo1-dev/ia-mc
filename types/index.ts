@@ -137,10 +137,15 @@ export interface WhatsAppTraining {
   content: string;
   metadata?: any;
   
-  // NOVO: Sistema de ativação multi-IA
+  // Sistema de ativação multi-IA
   mode: 'always' | 'keywords'; // Modo de ativação: sempre ou por palavras-chave
   keywords: string[]; // Lista de palavras-chave que ativam esta IA
   keywordsMatchType: 'any' | 'all'; // Qualquer palavra OU todas as palavras
+  
+  // Palavras de saída e mensagem de despedida
+  exitKeywords?: string[]; // Palavras que finalizam o treinamento para aquela conversa
+  exitMessage?: string; // Mensagem enviada quando treinamento é finalizado
+  
   priority: number; // Prioridade (maior = mais prioritário)
   isActive: boolean; // Se o treinamento está ativo
   

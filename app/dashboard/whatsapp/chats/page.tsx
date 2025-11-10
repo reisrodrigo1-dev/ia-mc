@@ -31,7 +31,8 @@ import {
   UserCircle,
   Plus,
   Trash2,
-  Edit2
+  Edit2,
+  RotateCcw
 } from 'lucide-react';
 
 import { getTrainingData } from '@/lib/whatsapp/training';
@@ -404,6 +405,35 @@ export default function WhatsAppChatsPage() {
     }
   };
 
+  const handleResetTraining = async () => {
+    if (!selectedChat || !selectedConnectionId) return;
+
+    if (!confirm('Deseja resetar o treinamento desta conversa? O cliente precisará usar uma palavra-chave novamente para iniciar um novo treinamento.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/whatsapp/reset-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          connectionId: selectedConnectionId,
+          phoneNumber: selectedChat.contactNumber
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Erro ao resetar treinamento');
+      }
+
+      setActiveTraining(null);
+      alert('Treinamento resetado com sucesso!');
+    } catch (error) {
+      console.error('Erro ao resetar treinamento:', error);
+      alert('Erro ao resetar treinamento');
+    }
+  };
+
   const handleStartEditName = (chat: WhatsAppChat) => {
     setEditingChatId(chat.id);
     setEditingName(chat.contactName || chat.contactNumber);
@@ -711,7 +741,20 @@ export default function WhatsAppChatsPage() {
                       </div>
                     )}
                     <p className="text-sm text-gray-500">{selectedChat.contactNumber}</p>
-                    <p className="text-sm text-gray-500">Treinamento: {activeTraining?.name || 'Nenhum'}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-gray-500">
+                        Treinamento: {activeTraining?.name || 'Nenhum'}
+                      </p>
+                      {activeTraining && (
+                        <button
+                          onClick={handleResetTraining}
+                          className="p-1 hover:bg-gray-100 rounded"
+                          title="Resetar treinamento desta conversa"
+                        >
+                          <RotateCcw className="w-3 h-3 text-gray-600" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

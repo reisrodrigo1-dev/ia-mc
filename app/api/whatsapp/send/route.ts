@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getActiveSession, getSessionStatus } from '@/app/api/whatsapp/whatsapp-sessions';
 
+export const runtime = 'nodejs';
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();

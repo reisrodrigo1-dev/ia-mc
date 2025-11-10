@@ -207,6 +207,9 @@ export default function WhatsAppTrainingPage() {
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordInput, setKeywordInput] = useState('');
   const [keywordsMatchType, setKeywordsMatchType] = useState<'any' | 'all'>('any');
+  const [exitKeywords, setExitKeywords] = useState<string[]>([]);
+  const [exitKeywordInput, setExitKeywordInput] = useState('');
+  const [exitMessage, setExitMessage] = useState('');
   const [priority, setPriority] = useState<number>(5);
   const [isActive, setIsActive] = useState<boolean>(true);
 
@@ -326,6 +329,8 @@ export default function WhatsAppTrainingPage() {
         mode,
         keywords,
         keywordsMatchType,
+        exitKeywords,
+        exitMessage,
         priority,
         isActive,
         ownerId: user.uid || user.id,
@@ -370,6 +375,8 @@ export default function WhatsAppTrainingPage() {
     setMode(training.mode || 'keywords');
     setKeywords(training.keywords || []);
     setKeywordsMatchType(training.keywordsMatchType || 'any');
+    setExitKeywords(training.exitKeywords || []);
+    setExitMessage(training.exitMessage || '');
     setPriority(training.priority || 5);
     setIsActive(training.isActive !== undefined ? training.isActive : true);
     
@@ -434,6 +441,8 @@ export default function WhatsAppTrainingPage() {
         mode,
         keywords,
         keywordsMatchType,
+        exitKeywords,
+        exitMessage,
         priority,
         isActive,
         updatedAt: Timestamp.now(),
@@ -470,6 +479,9 @@ export default function WhatsAppTrainingPage() {
     setKeywords([]);
     setKeywordInput('');
     setKeywordsMatchType('any');
+    setExitKeywords([]);
+    setExitKeywordInput('');
+    setExitMessage('');
     setPriority(5);
     setIsActive(true);
     setEditingTrainingId(null);
@@ -484,6 +496,17 @@ export default function WhatsAppTrainingPage() {
 
   const handleRemoveKeyword = (keyword: string) => {
     setKeywords(keywords.filter(k => k !== keyword));
+  };
+
+  const handleAddExitKeyword = () => {
+    if (exitKeywordInput.trim() && !exitKeywords.includes(exitKeywordInput.trim().toLowerCase())) {
+      setExitKeywords([...exitKeywords, exitKeywordInput.trim().toLowerCase()]);
+      setExitKeywordInput('');
+    }
+  };
+
+  const handleRemoveExitKeyword = (keyword: string) => {
+    setExitKeywords(exitKeywords.filter(k => k !== keyword));
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
