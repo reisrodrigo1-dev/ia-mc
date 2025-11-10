@@ -27,10 +27,160 @@ import {
   X,
   Loader2,
   Edit2,
-  Save
+  Save,
+  GripVertical
 } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 type TrainingType = 'document' | 'qna' | 'prompt' | 'url';
+
+// Componente SortableTrainingCard
+interface SortableTrainingCardProps {
+  training: WhatsAppTraining;
+  position: number;
+  onEdit: (training: WhatsAppTraining) => void;
+  onDelete: (id: string) => void;
+  getTypeInfo: (type: TrainingType) => any;
+}
+
+function SortableTrainingCard({ training, position, onEdit, onDelete, getTypeInfo }: SortableTrainingCardProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: training.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const typeInfo = getTypeInfo(training.type);
+  const TypeIcon = typeInfo.icon;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`bg-white rounded-lg border-2 p-4 ${
+        isDragging ? 'border-orange-500 shadow-lg' : 'border-gray-200 hover:border-gray-300'
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        {/* Drag Handle */}
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing mt-1 text-gray-400 hover:text-gray-600"
+        >
+          <GripVertical className="w-5 h-5" />
+        </div>
+
+        {/* Position Badge */}
+        <div className="flex-shrink-0">
+          <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center font-bold text-sm">
+            #{position}
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-1">{training.name}</h3>
+              {training.description && (
+                <p className="text-sm text-gray-600 mb-2">{training.description}</p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => onEdit(training)}
+                className="text-blue-600 hover:text-blue-700"
+                title="Editar"
+              >
+                <Edit2 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => onDelete(training.id)}
+                className="text-red-600 hover:text-red-700"
+                title="Excluir"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            {/* Type Badge */}
+            <span className={`inline-flex items-center gap-1 px-2 py-1 ${typeInfo.bg} ${typeInfo.color} rounded-full text-xs font-medium`}>
+              <TypeIcon className="w-3 h-3" />
+              {typeInfo.label}
+            </span>
+
+            {/* Mode Badge */}
+            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+              training.mode === 'always' 
+                ? 'bg-purple-100 text-purple-700' 
+                : 'bg-blue-100 text-blue-700'
+            }`}>
+              {training.mode === 'always' ? '🟣 Sempre Ativo' : '🔵 Palavras-chave'}
+            </span>
+
+            {/* Priority Badge */}
+            <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-medium">
+              ⚡ Prioridade: {training.priority}
+            </span>
+
+            {/* Active Badge */}
+            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+              training.isActive 
+                ? 'bg-green-100 text-green-700' 
+                : 'bg-gray-100 text-gray-700'
+            }`}>
+              {training.isActive ? '✅ Ativo' : '⏸️ Inativo'}
+            </span>
+          </div>
+
+          {/* Keywords */}
+          {training.mode === 'keywords' && training.keywords && training.keywords.length > 0 && (
+            <div className="mt-3">
+              <div className="text-xs text-gray-500 mb-1">
+                Palavras-chave ({training.keywordsMatchType === 'any' ? 'Qualquer' : 'Todas'}):
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {training.keywords.map((keyword) => (
+                  <span key={keyword} className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+                    {keyword}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function WhatsAppTrainingPage() {
   const { user } = useAuth();
@@ -59,6 +209,14 @@ export default function WhatsAppTrainingPage() {
   const [keywordsMatchType, setKeywordsMatchType] = useState<'any' | 'all'>('any');
   const [priority, setPriority] = useState<number>(5);
   const [isActive, setIsActive] = useState<boolean>(true);
+
+  // Drag & Drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   useEffect(() => {
     loadConnections();
@@ -106,8 +264,7 @@ export default function WhatsAppTrainingPage() {
       const trainingsRef = collection(db, 'whatsapp_training');
       const q = query(
         trainingsRef,
-        where('connectionId', '==', selectedConnectionId),
-        orderBy('createdAt', 'desc')
+        where('connectionId', '==', selectedConnectionId)
       );
 
       const snapshot = await getDocs(q);
@@ -115,6 +272,9 @@ export default function WhatsAppTrainingPage() {
         id: doc.id,
         ...doc.data()
       })) as WhatsAppTraining[];
+
+      // Ordenar por prioridade em memória (maior primeiro)
+      loadedTrainings.sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
       setTrainings(loadedTrainings);
     } catch (error) {
@@ -199,12 +359,14 @@ export default function WhatsAppTrainingPage() {
   };
 
   const handleStartEdit = (training: WhatsAppTraining) => {
+    console.log('🔧 Editando treinamento:', training);
+    
     setEditingTrainingId(training.id);
     setTrainingName(training.name || '');
     setTrainingDescription(training.description || '');
     setTrainingType(training.type);
     setTitle(training.title);
-    setContent(training.content);
+    setContent(training.content || '');
     setMode(training.mode || 'keywords');
     setKeywords(training.keywords || []);
     setKeywordsMatchType(training.keywordsMatchType || 'any');
@@ -218,6 +380,14 @@ export default function WhatsAppTrainingPage() {
     } else if (training.type === 'url' && training.metadata) {
       setUrl(training.metadata.url || '');
     }
+    
+    console.log('✅ Estados definidos:', {
+      trainingName: training.name,
+      title: training.title,
+      mode: training.mode,
+      keywords: training.keywords,
+      priority: training.priority
+    });
     
     setShowEditModal(true);
   };
@@ -314,6 +484,38 @@ export default function WhatsAppTrainingPage() {
 
   const handleRemoveKeyword = (keyword: string) => {
     setKeywords(keywords.filter(k => k !== keyword));
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) {
+      return;
+    }
+
+    const oldIndex = trainings.findIndex(t => t.id === active.id);
+    const newIndex = trainings.findIndex(t => t.id === over.id);
+
+    // Reordenar array localmente
+    const newTrainings = arrayMove(trainings, oldIndex, newIndex);
+    setTrainings(newTrainings);
+
+    // Atualizar prioridades no Firestore
+    try {
+      const updatePromises = newTrainings.map((training, index) => {
+        const newPriority = (newTrainings.length - index) * 10;
+        return updateDoc(doc(db, 'whatsapp_training', training.id), {
+          priority: newPriority
+        });
+      });
+
+      await Promise.all(updatePromises);
+      console.log('✅ Prioridades reorganizadas com sucesso');
+    } catch (error) {
+      console.error('Erro ao reorganizar prioridades:', error);
+      // Reverter mudança local em caso de erro
+      loadTrainings();
+    }
   };
 
   const getTypeInfo = (type: TrainingType) => {
@@ -448,97 +650,38 @@ export default function WhatsAppTrainingPage() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {trainings.map((training) => {
-            const typeInfo = getTypeInfo(training.type);
-            const TypeIcon = typeInfo.icon;
-            
-            return (
-              <div key={training.id} className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-3 rounded-lg ${typeInfo.bg}`}>
-                      <TypeIcon className={`w-6 h-6 ${typeInfo.color}`} />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">{training.name || training.title}</h3>
-                      {training.description && (
-                        <p className="text-sm text-gray-600 mt-1">{training.description}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {!training.isActive && (
-                      <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded">
-                        Inativo
-                      </span>
-                    )}
-                    <button
-                      onClick={() => handleStartEdit(training)}
-                      className="p-2 text-gray-400 hover:text-blue-600 transition-colors"
-                      title="Editar treinamento"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(training.id)}
-                      className="p-2 text-gray-400 hover:text-red-600 transition-colors"
-                      title="Excluir treinamento"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
+        <div>
+          {/* Drag & Drop Instructions */}
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-800">
+              💡 <strong>Dica:</strong> Arraste os cards para reorganizar as prioridades. A posição #1 tem maior prioridade.
+            </p>
+          </div>
 
-                {/* Info Cards */}
-                <div className="grid grid-cols-3 gap-3 mb-4">
-                  <div className="bg-gray-50 p-3 rounded-lg">
-                    <p className="text-xs text-gray-600 mb-1">Modo</p>
-                    <p className="text-sm font-semibold text-gray-900">
-                      {training.mode === 'always' ? '⚡ Sempre' : '🎯 Palavras-chave'}
-                    </p>
-                  </div>
-                  <div className="bg-gray-50 p-3 rounded-lg">
-                    <p className="text-xs text-gray-600 mb-1">Prioridade</p>
-                    <p className="text-sm font-semibold text-gray-900">
-                      {training.priority || 5}/10
-                    </p>
-                  </div>
-                  <div className="bg-gray-50 p-3 rounded-lg">
-                    <p className="text-xs text-gray-600 mb-1">Tipo</p>
-                    <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${typeInfo.bg} ${typeInfo.color}`}>
-                      {typeInfo.label}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Keywords */}
-                {training.mode === 'keywords' && training.keywords && training.keywords.length > 0 && (
-                  <div className="mb-4">
-                    <p className="text-xs text-gray-600 mb-2">Palavras-chave:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {training.keywords.map((keyword: string) => (
-                        <span key={keyword} className="px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded-full">
-                          {keyword}
-                        </span>
-                      ))}
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Match: {training.keywordsMatchType === 'any' ? 'Qualquer palavra' : 'Todas as palavras'}
-                    </p>
-                  </div>
-                )}
-
-                {/* Content Preview */}
-                <div>
-                  <p className="text-xs font-medium text-gray-700 mb-1">{training.title}</p>
-                  <div className="text-sm text-gray-600 line-clamp-2 bg-gray-50 p-3 rounded-lg">
-                    {training.content}
-                  </div>
-                </div>
+          {/* Sortable Training Cards */}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={trainings.map(t => t.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-3">
+                {trainings.map((training, index) => (
+                  <SortableTrainingCard
+                    key={training.id}
+                    training={training}
+                    position={index + 1}
+                    onEdit={handleStartEdit}
+                    onDelete={handleDelete}
+                    getTypeInfo={getTypeInfo}
+                  />
+                ))}
               </div>
-            );
-          })}
+            </SortableContext>
+          </DndContext>
         </div>
       )}
 
@@ -710,22 +853,19 @@ export default function WhatsAppTrainingPage() {
                 {/* Prioridade */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Prioridade: {priority}
+                    Prioridade
                   </label>
                   <input
-                    type="range"
+                    type="number"
                     min="1"
-                    max="10"
+                    max="999"
                     value={priority}
-                    onChange={(e) => setPriority(Number(e.target.value))}
-                    className="w-full"
+                    onChange={(e) => setPriority(Number(e.target.value) || 1)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                    placeholder="Ex: 10"
                   />
-                  <div className="flex justify-between text-xs text-gray-500 mt-1">
-                    <span>Baixa (1)</span>
-                    <span>Alta (10)</span>
-                  </div>
                   <p className="text-xs text-gray-500 mt-1">
-                    Prioridade mais alta = será escolhido primeiro em caso de múltiplos matches
+                    Valores maiores = maior prioridade. Use 100+ para treinamentos críticos. Reorganize arrastando os cards.
                   </p>
                 </div>
 
@@ -898,8 +1038,8 @@ export default function WhatsAppTrainingPage() {
       )}
 
       {/* Edit Modal */}
-      {showEditModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      {showEditModal && editingTrainingId && (
+        <div key={editingTrainingId} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold text-gray-900">Editar Treinamento</h2>
@@ -1059,20 +1199,20 @@ export default function WhatsAppTrainingPage() {
                 {/* Prioridade */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Prioridade: {priority}
+                    Prioridade
                   </label>
                   <input
-                    type="range"
+                    type="number"
                     min="1"
-                    max="10"
+                    max="999"
                     value={priority}
-                    onChange={(e) => setPriority(Number(e.target.value))}
-                    className="w-full"
+                    onChange={(e) => setPriority(Number(e.target.value) || 1)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                    placeholder="Ex: 10"
                   />
-                  <div className="flex justify-between text-xs text-gray-500 mt-1">
-                    <span>Baixa (1)</span>
-                    <span>Alta (10)</span>
-                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Valores maiores = maior prioridade. Use 100+ para treinamentos críticos. Reorganize arrastando os cards.
+                  </p>
                 </div>
 
                 {/* Status */}
