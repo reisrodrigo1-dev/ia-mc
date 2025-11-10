@@ -698,11 +698,19 @@ export default function WhatsAppChatsPage() {
                     }`}
                   >
                     <p className="text-sm whitespace-pre-wrap">{message.message}</p>
-                    <p className={`text-xs mt-1 ${
-                      message.isFromMe ? 'text-orange-100' : 'text-gray-500'
-                    }`}>
-                      {formatTime(message.timestamp)}
-                    </p>
+                    <div className="flex items-center justify-between gap-2 mt-1">
+                      <p className={`text-xs ${
+                        message.isFromMe ? 'text-orange-100' : 'text-gray-500'
+                      }`}>
+                        {formatTime(message.timestamp)}
+                      </p>
+                      {message.isFromMe && message.aiTrainingName && (
+                        <span className="text-xs bg-orange-700 px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <Bot className="w-3 h-3" />
+                          {message.aiTrainingName}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}

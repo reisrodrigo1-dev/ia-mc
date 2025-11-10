@@ -121,15 +121,29 @@ export interface WhatsAppMessage {
   isFromMe: boolean;
   timestamp: Date | Timestamp;
   status: 'pending' | 'sent' | 'delivered' | 'read' | 'error';
+  
+  // NOVO: Rastreamento de qual IA respondeu
+  aiTrainingId?: string; // ID do treinamento que gerou a resposta (se foi IA)
+  aiTrainingName?: string; // Nome do treinamento para exibição
 }
 
 export interface WhatsAppTraining {
   id: string;
   connectionId: string;
+  name: string; // Nome do treinamento (ex: "Atendimento Vendas")
+  description?: string; // Descrição do treinamento
   type: 'document' | 'qna' | 'prompt' | 'url';
   title: string;
   content: string;
   metadata?: any;
+  
+  // NOVO: Sistema de ativação multi-IA
+  mode: 'always' | 'keywords'; // Modo de ativação: sempre ou por palavras-chave
+  keywords: string[]; // Lista de palavras-chave que ativam esta IA
+  keywordsMatchType: 'any' | 'all'; // Qualquer palavra OU todas as palavras
+  priority: number; // Prioridade (maior = mais prioritário)
+  isActive: boolean; // Se o treinamento está ativo
+  
   ownerId: string;
   createdAt: Date | Timestamp;
   updatedAt?: Date | Timestamp;

@@ -207,17 +207,92 @@ async function createConnection(connectionId: string) {
           console.log(`🤖 [${connectionId}] IA ativa! Processando resposta para chat ${chatId}...`);
           
           try {
-            // Buscar treinamento da conexão
+            // Buscar TODOS os treinamentos ativos da conexão
             const trainingRef = collection(db, 'whatsapp_training');
             const trainingQuery = query(
               trainingRef,
-              where('connectionId', '==', connectionId)
+              where('connectionId', '==', connectionId),
+              where('isActive', '==', true)
             );
             const trainingSnapshot = await getDocs(trainingQuery);
             
-            // Montar contexto com documentos de treinamento
+            if (trainingSnapshot.empty) {
+              console.log(`⚠️ [${connectionId}] Nenhum treinamento ativo encontrado`);
+              return;
+            }
+
+            // 🎯 SELECIONAR O TREINAMENTO MAIS RELEVANTE
+            let selectedTraining: any = null;
+            let highestScore = -1;
+            const messageLowerCase = messageText.toLowerCase();
+
+            console.log(`🔍 [${connectionId}] Analisando ${trainingSnapshot.docs.length} treinamentos...`);
+
+            for (const trainingDoc of trainingSnapshot.docs) {
+              const training = trainingDoc.data();
+              let score = 0;
+
+              console.log(`   📝 Analisando: ${training.name} (mode: ${training.mode})`);
+
+              if (training.mode === 'always') {
+                // Modo sempre ativo: prioridade base
+                score = training.priority || 1;
+                console.log(`      ✓ Modo "always" - score: ${score}`);
+              } else if (training.mode === 'keywords' && training.keywords && training.keywords.length > 0) {
+                // Modo palavras-chave: verificar matches
+                const keywords = training.keywords.map((k: string) => k.toLowerCase());
+                const matchedKeywords = keywords.filter((keyword: string) => 
+                  messageLowerCase.includes(keyword)
+                );
+
+                if (matchedKeywords.length > 0) {
+                  if (training.keywordsMatchType === 'all') {
+                    // Precisa de todas as palavras
+                    if (matchedKeywords.length === keywords.length) {
+                      score = matchedKeywords.length * (training.priority || 1);
+                      console.log(`      ✓ Match "all" (${matchedKeywords.length}/${keywords.length}) - score: ${score}`);
+                    } else {
+                      console.log(`      ✗ Match "all" incompleto (${matchedKeywords.length}/${keywords.length})`);
+                    }
+                  } else {
+                    // Qualquer palavra
+                    score = matchedKeywords.length * (training.priority || 1);
+                    console.log(`      ✓ Match "any" (${matchedKeywords.length} palavras) - score: ${score}`);
+                  }
+                } else {
+                  console.log(`      ✗ Nenhuma palavra-chave encontrada`);
+                }
+              }
+
+              // Verificar se é o melhor score
+              if (score > highestScore) {
+                highestScore = score;
+                selectedTraining = {
+                  id: trainingDoc.id,
+                  ...training
+                };
+                console.log(`      🏆 Novo melhor score: ${score}`);
+              }
+            }
+
+            if (!selectedTraining) {
+              console.log(`⚠️ [${connectionId}] Nenhum treinamento selecionado`);
+              return;
+            }
+
+            console.log(`✅ [${connectionId}] Treinamento selecionado: "${selectedTraining.name}" (score: ${highestScore})`);
+
+            // Buscar TODOS os documentos deste treinamento específico
+            const trainingDocsQuery = query(
+              trainingRef,
+              where('connectionId', '==', connectionId),
+              where('name', '==', selectedTraining.name)
+            );
+            const trainingDocsSnapshot = await getDocs(trainingDocsQuery);
+            
+            // Montar contexto com documentos do treinamento selecionado
             let contextText = '';
-            trainingSnapshot.docs.forEach(doc => {
+            trainingDocsSnapshot.docs.forEach(doc => {
               const data = doc.data();
               contextText += `\n\n=== ${data.title} ===\n${data.content}`;
             });
@@ -272,7 +347,7 @@ Regras:
             // Enviar resposta via WhatsApp
             await sock.sendMessage(chatJid, { text: aiResponse });
 
-            // Salvar resposta da IA no Firestore
+            // Salvar resposta da IA no Firestore (com rastreamento do treinamento usado)
             const aiMessage = {
               connectionId,
               chatId,
@@ -282,6 +357,8 @@ Regras:
               isFromMe: true,
               timestamp: Timestamp.now(),
               status: 'sent',
+              aiTrainingId: selectedTraining.id,
+              aiTrainingName: selectedTraining.name,
             };
 
             await addDoc(collection(db, 'whatsapp_messages'), aiMessage);
