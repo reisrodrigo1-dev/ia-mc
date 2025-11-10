@@ -114,10 +114,18 @@ export default function WhatsAppChatsPage() {
       loadMessages();
       const fetchTraining = async () => {
         try {
-          const training = await getTrainingData(selectedChat.connectionId);
-          setActiveTraining(training);
+          // Buscar treinamento ativo específico desta conversa
+          const response = await fetch(`/api/whatsapp/get-active-training?connectionId=${selectedChat.connectionId}&phoneNumber=${selectedChat.contactNumber}`);
+          
+          if (response.ok) {
+            const data = await response.json();
+            setActiveTraining(data.training);
+          } else {
+            setActiveTraining(null);
+          }
         } catch (error) {
           console.error('Erro ao carregar treinamento:', error);
+          setActiveTraining(null);
         }
       };
       fetchTraining();
@@ -423,14 +431,20 @@ export default function WhatsAppChatsPage() {
       });
 
       if (!response.ok) {
-        throw new Error('Erro ao resetar treinamento');
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao resetar treinamento');
       }
 
+      // Atualizar estado local
       setActiveTraining(null);
+      
+      // Recarregar lista de chats para sincronizar
+      await loadChats();
+      
       alert('Treinamento resetado com sucesso!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao resetar treinamento:', error);
-      alert('Erro ao resetar treinamento');
+      alert(`Erro ao resetar treinamento: ${error.message}`);
     }
   };
 

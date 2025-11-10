@@ -1,5 +1,6 @@
 import { WhatsAppSessionManager } from './session-manager';
 import { startKeepAlive, logConnectionStatus } from './keep-alive';
+import { startInactivityMonitor } from './inactivity-monitor';
 
 let isInitialized = false;
 
@@ -17,6 +18,9 @@ export async function initializeWhatsAppServer() {
     
     // Iniciar keep-alive
     startKeepAlive();
+    
+    // Iniciar monitor de inatividade
+    startInactivityMonitor();
     
     // Iniciar logs de status
     logConnectionStatus();

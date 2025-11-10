@@ -63,10 +63,13 @@ export async function activateTrainingForChat(
     const chatId = `${connectionId}_${phoneNumber.replace(/[^0-9]/g, '')}`;
     const chatRef = doc(db, 'whatsapp_chats', chatId);
 
+    const now = new Date().toISOString();
+
     await updateDoc(chatRef, {
       activeTrainingId: trainingId,
-      trainingStartedAt: new Date().toISOString(),
-      lastMessageAt: new Date().toISOString()
+      trainingStartedAt: now,
+      trainingActivatedAt: now,
+      lastMessageAt: now
     });
 
     console.log(`✅ Treinamento ${trainingId} ativado para ${phoneNumber}`);

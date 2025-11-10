@@ -210,6 +210,7 @@ export default function WhatsAppTrainingPage() {
   const [exitKeywords, setExitKeywords] = useState<string[]>([]);
   const [exitKeywordInput, setExitKeywordInput] = useState('');
   const [exitMessage, setExitMessage] = useState('');
+  const [inactivityTimeout, setInactivityTimeout] = useState<number>(0);
   const [priority, setPriority] = useState<number>(5);
   const [isActive, setIsActive] = useState<boolean>(true);
 
@@ -331,6 +332,7 @@ export default function WhatsAppTrainingPage() {
         keywordsMatchType,
         exitKeywords,
         exitMessage,
+        inactivityTimeout,
         priority,
         isActive,
         ownerId: user.uid || user.id,
@@ -377,6 +379,7 @@ export default function WhatsAppTrainingPage() {
     setKeywordsMatchType(training.keywordsMatchType || 'any');
     setExitKeywords(training.exitKeywords || []);
     setExitMessage(training.exitMessage || '');
+    setInactivityTimeout(training.inactivityTimeout || 0);
     setPriority(training.priority || 5);
     setIsActive(training.isActive !== undefined ? training.isActive : true);
     
@@ -443,6 +446,7 @@ export default function WhatsAppTrainingPage() {
         keywordsMatchType,
         exitKeywords,
         exitMessage,
+        inactivityTimeout,
         priority,
         isActive,
         updatedAt: Timestamp.now(),
@@ -482,6 +486,7 @@ export default function WhatsAppTrainingPage() {
     setExitKeywords([]);
     setExitKeywordInput('');
     setExitMessage('');
+    setInactivityTimeout(0);
     setPriority(5);
     setIsActive(true);
     setEditingTrainingId(null);
@@ -870,6 +875,87 @@ export default function WhatsAppTrainingPage() {
                         </label>
                       </div>
                     </div>
+
+                    {/* Exit Keywords - Palavras de Saída */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Palavras de Saída (opcional)
+                      </label>
+                      <p className="text-xs text-gray-500 mb-2">
+                        Palavras que finalizam o treinamento para aquela conversa (ex: tchau, obrigado, sair)
+                      </p>
+                      <div className="flex gap-2 mb-2">
+                        <input
+                          type="text"
+                          value={exitKeywordInput}
+                          onChange={(e) => setExitKeywordInput(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddExitKeyword())}
+                          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                          placeholder="Digite uma palavra de saída"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddExitKeyword}
+                          className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
+                        >
+                          <Plus className="w-5 h-5" />
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {exitKeywords.map((keyword) => (
+                          <span
+                            key={keyword}
+                            className="inline-flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm"
+                          >
+                            {keyword}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveExitKeyword(keyword)}
+                              className="hover:text-red-900"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Mensagem de Despedida */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Mensagem de Despedida (opcional)
+                      </label>
+                      <textarea
+                        value={exitMessage}
+                        onChange={(e) => setExitMessage(e.target.value)}
+                        rows={2}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                        placeholder="Mensagem enviada quando o treinamento é finalizado (ex: Obrigado pelo contato!)"
+                      />
+                    </div>
+
+                    {/* Timeout de Inatividade */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Timeout de Inatividade (opcional)
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={inactivityTimeout || ''}
+                          onChange={(e) => setInactivityTimeout(Number(e.target.value) || 0)}
+                          className="w-32 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                          placeholder="0"
+                        />
+                        <span className="text-sm text-gray-600">minutos</span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Tempo sem mensagens para desativar automaticamente. Use 0 para nunca expirar. 
+                        <strong>Exemplo:</strong> 60 = 1 hora, 1440 = 1 dia
+                      </p>
+                    </div>
                   </>
                 )}
 
@@ -1215,6 +1301,87 @@ export default function WhatsAppTrainingPage() {
                           </span>
                         </label>
                       </div>
+                    </div>
+
+                    {/* Exit Keywords - Palavras de Saída */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Palavras de Saída (opcional)
+                      </label>
+                      <p className="text-xs text-gray-500 mb-2">
+                        Palavras que finalizam o treinamento para aquela conversa (ex: tchau, obrigado, sair)
+                      </p>
+                      <div className="flex gap-2 mb-2">
+                        <input
+                          type="text"
+                          value={exitKeywordInput}
+                          onChange={(e) => setExitKeywordInput(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddExitKeyword())}
+                          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                          placeholder="Digite uma palavra de saída"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddExitKeyword}
+                          className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
+                        >
+                          <Plus className="w-5 h-5" />
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {exitKeywords.map((keyword) => (
+                          <span
+                            key={keyword}
+                            className="inline-flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 rounded-full text-sm"
+                          >
+                            {keyword}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveExitKeyword(keyword)}
+                              className="hover:text-red-900"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Mensagem de Despedida */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Mensagem de Despedida (opcional)
+                      </label>
+                      <textarea
+                        value={exitMessage}
+                        onChange={(e) => setExitMessage(e.target.value)}
+                        rows={2}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                        placeholder="Mensagem enviada quando o treinamento é finalizado (ex: Obrigado pelo contato!)"
+                      />
+                    </div>
+
+                    {/* Timeout de Inatividade */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Timeout de Inatividade (opcional)
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={inactivityTimeout || ''}
+                          onChange={(e) => setInactivityTimeout(Number(e.target.value) || 0)}
+                          className="w-32 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                          placeholder="0"
+                        />
+                        <span className="text-sm text-gray-600">minutos</span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Tempo sem mensagens para desativar automaticamente. Use 0 para nunca expirar. 
+                        <strong>Exemplo:</strong> 60 = 1 hora, 1440 = 1 dia
+                      </p>
                     </div>
                   </>
                 )}

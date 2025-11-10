@@ -11,7 +11,7 @@ import {
 } from '@/lib/whatsapp/chat-sessions';
 import OpenAI from 'openai';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { collection, addDoc, query, where, orderBy, limit, getDocs, doc, setDoc } from 'firebase/firestore';
 
 export const runtime = 'nodejs';
 
@@ -32,8 +32,14 @@ export async function POST(req: NextRequest) {
     // Normalizar número (remover @s.whatsapp.net)
     const phoneNumber = from.replace('@s.whatsapp.net', '');
 
-    // Incrementar contador de mensagens
-    await incrementMessageCount(connectionId, phoneNumber);
+    // Atualizar timestamp da última mensagem (para timeout de inatividade)
+    const chatId = `${connectionId}_${phoneNumber}`;
+    const chatRef = doc(db, 'whatsapp_chats', chatId);
+    await setDoc(chatRef, {
+      connectionId,
+      phoneNumber,
+      lastMessageAt: new Date().toISOString()
+    }, { merge: true });
 
     // Buscar treinamento ativo para esta conversa específica
     let training = await getActiveTrainingForChat(connectionId, phoneNumber);

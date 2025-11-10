@@ -146,6 +146,9 @@ export interface WhatsAppTraining {
   exitKeywords?: string[]; // Palavras que finalizam o treinamento para aquela conversa
   exitMessage?: string; // Mensagem enviada quando treinamento é finalizado
   
+  // Timeout de inatividade
+  inactivityTimeout?: number; // Minutos sem mensagem para desativar automaticamente (0 = nunca expira)
+  
   priority: number; // Prioridade (maior = mais prioritário)
   isActive: boolean; // Se o treinamento está ativo
   
