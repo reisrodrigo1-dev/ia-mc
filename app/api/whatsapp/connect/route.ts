@@ -159,6 +159,7 @@ async function createConnection(connectionId: string) {
             contactName: message.pushName || contactNumber,
             lastMessage: messageText,
             lastMessageAt: Timestamp.now(),
+            lastActivityAt: Timestamp.now(), // Última atividade
             status: 'active',
             isAiActive: false,
             tags: [],
@@ -179,10 +180,36 @@ async function createConnection(connectionId: string) {
           isAiActive = chatData.isAiActive || false;
           excludedTrainings = chatData.excludedTrainings || [];
           
+          // Verificar timeout de 30 minutos
+          const lastActivityAt = chatData.lastActivityAt;
+          if (lastActivityAt) {
+            const now = Timestamp.now();
+            const timeDiff = now.toMillis() - lastActivityAt.toMillis();
+            const thirtyMinutes = 30 * 60 * 1000; // 30 minutos em milissegundos
+            
+            if (timeDiff > thirtyMinutes) {
+              console.log(`⏰ [${connectionId}] Timeout de 30 minutos atingido (${Math.round(timeDiff / 60000)} minutos sem atividade)`);
+              console.log(`🔄 [${connectionId}] Resetando treinamentos excluídos do chat ${chatId}`);
+              
+              // Resetar lista de treinamentos excluídos
+              excludedTrainings = [];
+              
+              // Atualizar chat no Firestore
+              await updateDoc(doc(db, 'whatsapp_chats', chatId), {
+                excludedTrainings: [],
+                lastActivityAt: Timestamp.now(), // Resetar atividade
+                updatedAt: Timestamp.now(),
+              });
+              
+              console.log(`✅ [${connectionId}] Treinamentos resetados por timeout - chat voltou ao estado inicial`);
+            }
+          }
+          
           // Atualizar chat existente
           await updateDoc(doc(db, 'whatsapp_chats', chatId), {
             lastMessage: messageText,
             lastMessageAt: Timestamp.now(),
+            lastActivityAt: Timestamp.now(), // Atualizar última atividade
             contactName: message.pushName || chatData.contactName,
             updatedAt: Timestamp.now(),
           });

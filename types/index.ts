@@ -156,6 +156,7 @@ export interface WhatsAppChat {
   contactNumber: string;
   lastMessage?: string;
   lastMessageAt?: Date | Timestamp;
+  lastActivityAt?: Date | Timestamp; // Última atividade no chat (nova mensagem)
   status: 'active' | 'waiting' | 'closed';
   isAiActive: boolean;
   tags?: string[];
