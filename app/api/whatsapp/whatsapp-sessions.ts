@@ -10,6 +10,7 @@
 // - ${connectionId}_user: objeto (dados do usuário)
 export const activeSessions = new Map<string, any>();
 export const pendingReconnections = new Map<string, NodeJS.Timeout>();
+export const reconnectionDelays = new Map<string, number>();
 
 export function getActiveSession(connectionId: string): any | undefined {
   return activeSessions.get(connectionId);

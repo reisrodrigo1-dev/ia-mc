@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import makeWASocket, { 
-  DisconnectReason, 
   useMultiFileAuthState,
   fetchLatestBaileysVersion 
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
-// @ts-ignore
 import QRCode from 'qrcode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { 
   activeSessions, 
-  pendingReconnections
+  pendingReconnections,
+  reconnectionDelays
 } from '@/app/api/whatsapp/whatsapp-sessions';
 
 // Função para restaurar sessões existentes
@@ -55,13 +54,14 @@ async function createConnection(connectionId: string) {
     fs.mkdirSync(authPath, { recursive: true });
   }
 
+// eslint-disable-next-line react-hooks/rules-of-hooks
   const { state, saveCreds } = await useMultiFileAuthState(authPath);
   const { version } = await fetchLatestBaileysVersion();
 
   const sock = makeWASocket({
     version,
     auth: state,
-    printQRInTerminal: true, // Ver QR no terminal também
+    // printQRInTerminal: true, // Removido - deprecated
     // Configurações de reconexão
     connectTimeoutMs: 60000,
     defaultQueryTimeoutMs: undefined,
@@ -149,6 +149,7 @@ async function createConnection(connectionId: string) {
         const chatSnapshot = await getDocs(chatQuery);
         let chatId: string;
         let isAiActive = false;
+        let excludedTrainings: string[] = [];
 
         if (chatSnapshot.empty) {
           // Criar novo chat
@@ -162,6 +163,7 @@ async function createConnection(connectionId: string) {
             isAiActive: false,
             tags: [],
             notes: '',
+            excludedTrainings: [],
             createdAt: Timestamp.now(),
             updatedAt: Timestamp.now(),
           };
@@ -169,16 +171,19 @@ async function createConnection(connectionId: string) {
           const chatDocRef = await addDoc(chatsRef, newChat);
           chatId = chatDocRef.id;
           isAiActive = false;
+          excludedTrainings = [];
           console.log(`✅ [${connectionId}] Novo chat criado: ${chatId}`);
         } else {
           chatId = chatSnapshot.docs[0].id;
-          isAiActive = chatSnapshot.docs[0].data().isAiActive || false;
+          const chatData = chatSnapshot.docs[0].data();
+          isAiActive = chatData.isAiActive || false;
+          excludedTrainings = chatData.excludedTrainings || [];
           
           // Atualizar chat existente
           await updateDoc(doc(db, 'whatsapp_chats', chatId), {
             lastMessage: messageText,
             lastMessageAt: Timestamp.now(),
-            contactName: message.pushName || chatSnapshot.docs[0].data().contactName,
+            contactName: message.pushName || chatData.contactName,
             updatedAt: Timestamp.now(),
           });
           console.log(`✅ [${connectionId}] Chat atualizado: ${chatId}`);
@@ -201,6 +206,7 @@ async function createConnection(connectionId: string) {
 
         // Debug: verificar estado da IA
         console.log(`🔍 [${connectionId}] Debug IA - isFromMe: ${isFromMe}, isAiActive: ${isAiActive}, chatId: ${chatId}`);
+        console.log(`💬 [${connectionId}] Mensagem: "${messageText}"`);
 
         // 🤖 RESPOSTA AUTOMÁTICA DA IA (somente se IA estiver ativa e mensagem não for minha)
         if (!isFromMe && isAiActive) {
@@ -216,6 +222,9 @@ async function createConnection(connectionId: string) {
             );
             const trainingSnapshot = await getDocs(trainingQuery);
             
+            console.log(`📊 [${connectionId}] Query treinamentos: connectionId="${connectionId}", isActive=true`);
+            console.log(`📈 [${connectionId}] Treinamentos encontrados: ${trainingSnapshot.docs.length}`);
+            
             if (trainingSnapshot.empty) {
               console.log(`⚠️ [${connectionId}] Nenhum treinamento ativo encontrado`);
               return;
@@ -223,27 +232,37 @@ async function createConnection(connectionId: string) {
 
             // 🎯 SELECIONAR O TREINAMENTO MAIS RELEVANTE
             let selectedTraining: any = null;
+            let reactivatedTraining: any = null; // Treinamento que foi reativado
             let highestScore = -1;
             const messageLowerCase = messageText.toLowerCase();
 
             console.log(`🔍 [${connectionId}] Analisando ${trainingSnapshot.docs.length} treinamentos...`);
+            console.log(`� [${connectionId}] Mensagem recebida: "${messageText}"`);
+            console.log(`🔤 [${connectionId}] Mensagem lowercase: "${messageLowerCase}"`);
+            console.log(`�🚫 [${connectionId}] Treinamentos excluídos desta conversa: ${excludedTrainings.join(', ') || 'Nenhum'}`);
 
             for (const trainingDoc of trainingSnapshot.docs) {
               const training = trainingDoc.data();
+              
               let score = 0;
+              let isExcluded = excludedTrainings.includes(trainingDoc.id);
 
-              console.log(`   📝 Analisando: ${training.name} (mode: ${training.mode})`);
+              console.log(`   📝 Analisando: ${training.name} (mode: ${training.mode})${isExcluded ? ' [EXCLUÍDO]' : ''}`);
+              console.log(`   🔑 Keywords: ${training.keywords ? training.keywords.join(', ') : 'Nenhuma'}`);
+              console.log(`   🎯 Match type: ${training.keywordsMatchType}`);
 
-              if (training.mode === 'always') {
-                // Modo sempre ativo: prioridade base
-                score = training.priority || 1;
-                console.log(`      ✓ Modo "always" - score: ${score}`);
-              } else if (training.mode === 'keywords' && training.keywords && training.keywords.length > 0) {
+              if (training.mode === 'keywords' && training.keywords && training.keywords.length > 0) {
                 // Modo palavras-chave: verificar matches
-                const keywords = training.keywords.map((k: string) => k.toLowerCase());
-                const matchedKeywords = keywords.filter((keyword: string) => 
-                  messageLowerCase.includes(keyword)
-                );
+                const keywords = training.keywords.map((k: string) => k.toLowerCase().trim());
+                console.log(`   🔤 Keywords lowercase: ${keywords.join(', ')}`);
+                
+                const matchedKeywords = keywords.filter((keyword: string) => {
+                  const includes = messageLowerCase.includes(keyword);
+                  console.log(`      🔍 Verificando "${keyword}" em "${messageLowerCase}": ${includes}`);
+                  return includes;
+                });
+
+                console.log(`   ✅ Keywords encontradas: ${matchedKeywords.join(', ') || 'Nenhuma'}`);
 
                 if (matchedKeywords.length > 0) {
                   if (training.keywordsMatchType === 'all') {
@@ -262,16 +281,26 @@ async function createConnection(connectionId: string) {
                 } else {
                   console.log(`      ✗ Nenhuma palavra-chave encontrada`);
                 }
+
+                // Se encontrou palavras-chave e o treinamento estava excluído, marcar para reativação
+                if (isExcluded && score > 0) {
+                  reactivatedTraining = {
+                    id: trainingDoc.id,
+                    ...training
+                  };
+                  console.log(`      🔄 [${connectionId}] Treinamento "${training.name}" será REATIVADO devido às palavras-chave encontradas!`);
+                }
               }
 
-              // Verificar se é o melhor score
-              if (score > highestScore) {
+              // Verificar se é o melhor score (treinamentos excluídos só são considerados se tiverem palavras-chave)
+              // Só seleciona treinamentos com score > 0 (match real de keywords)
+              if (score > 0 && score > highestScore && (!isExcluded || reactivatedTraining)) {
                 highestScore = score;
                 selectedTraining = {
                   id: trainingDoc.id,
                   ...training
                 };
-                console.log(`      🏆 Novo melhor score: ${score}`);
+                console.log(`      🏆 Novo melhor score: ${score} - Treinamento selecionado: ${training.name}${isExcluded ? ' (reativado)' : ''}`);
               }
             }
 
@@ -281,6 +310,20 @@ async function createConnection(connectionId: string) {
             }
 
             console.log(`✅ [${connectionId}] Treinamento selecionado: "${selectedTraining.name}" (score: ${highestScore})`);
+
+            // Se um treinamento foi reativado, removê-lo da lista de excluídos
+            if (reactivatedTraining && excludedTrainings.includes(reactivatedTraining.id)) {
+              excludedTrainings = excludedTrainings.filter(id => id !== reactivatedTraining.id);
+              
+              // Atualizar no Firestore
+              await updateDoc(doc(db, 'whatsapp_chats', chatId), {
+                excludedTrainings: excludedTrainings,
+                updatedAt: Timestamp.now(),
+              });
+              
+              console.log(`🔄 [${connectionId}] Treinamento "${reactivatedTraining.name}" REMOVIDO da lista de excluídos!`);
+              console.log(`✅ [${connectionId}] Reativação concluída: "${reactivatedTraining.name}" agora está ativo nesta conversa!`);
+            }
 
             // Buscar TODOS os documentos deste treinamento específico
             const trainingDocsQuery = query(
@@ -453,6 +496,8 @@ Regras:
         console.log(`⚠️ [${connectionId}] Stream error - reconectando...`);
       } else if (statusCode === 401) {
         console.log(`🚪 [${connectionId}] Usuário deslogou - não vai reconectar`);
+      } else if (statusCode === 440) {
+        console.log(`⚠️ [${connectionId}] Conexão expirada - reconectando com backoff...`);
       } else {
         console.log(`⚠️ [${connectionId}] Erro ${statusCode || 'desconhecido'} - tentando reconectar...`);
       }
@@ -467,24 +512,39 @@ Regras:
       });
 
       if (shouldReconnect) {
-        // Reconectar automaticamente após 3 segundos
-        console.log(`⏳ [${connectionId}] Aguardando 3s para reconectar...`);
-        
-        // Cancelar reconexão anterior se existir
+        // Cancelar reconexão pendente se existir
         if (pendingReconnections.has(connectionId)) {
           clearTimeout(pendingReconnections.get(connectionId));
+          console.log(`🛑 [${connectionId}] Cancelando reconexão pendente`);
         }
         
-        const timeout = setTimeout(() => {
-          console.log(`🔄 [${connectionId}] Iniciando reconexão...`);
-          createConnection(connectionId);
-          pendingReconnections.delete(connectionId);
-        }, 3000);
+        // Backoff exponencial: aumentar delay progressivamente
+        const currentDelay = reconnectionDelays.get(connectionId) || 3000;
+        const newDelay = Math.min(currentDelay * 1.5, 30000); // Máximo 30s, crescimento de 1.5x
+        
+        console.log(`⏳ [${connectionId}] Aguardando ${Math.round(newDelay / 1000)}s para reconectar... (delay atual: ${Math.round(currentDelay / 1000)}s)`);
+        
+        const timeout = setTimeout(async () => {
+          try {
+            console.log(`🔄 [${connectionId}] Iniciando reconexão...`);
+            await createConnection(connectionId);
+            // Resetar delay após sucesso
+            reconnectionDelays.delete(connectionId);
+          } catch (reconnectError) {
+            console.error(`❌ [${connectionId}] Erro na reconexão:`, reconnectError);
+            // Manter delay para próxima tentativa
+          } finally {
+            pendingReconnections.delete(connectionId);
+          }
+        }, newDelay);
         
         pendingReconnections.set(connectionId, timeout);
+        reconnectionDelays.set(connectionId, newDelay);
       } else {
         console.log(`❌ [${connectionId}] Não vai reconectar - sessão encerrada`);
         activeSessions.delete(connectionId);
+        // Limpar delays
+        reconnectionDelays.delete(connectionId);
       }
     } else if (connection === 'open') {
       console.log(`\n🎉🎉🎉 [${connectionId}] ========================================`);
@@ -510,7 +570,11 @@ Regras:
       if (pendingReconnections.has(connectionId)) {
         clearTimeout(pendingReconnections.get(connectionId));
         pendingReconnections.delete(connectionId);
+        console.log(`✅ [${connectionId}] Reconexão cancelada - conexão estabelecida`);
       }
+      
+      // Resetar delay após conexão bem-sucedida
+      reconnectionDelays.delete(connectionId);
     } else if (connection === 'connecting') {
       console.log(`🔄 [${connectionId}] Conectando ao WhatsApp...`);
       activeSessions.set(`${connectionId}_status`, 'connecting');

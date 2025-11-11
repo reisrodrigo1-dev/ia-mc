@@ -160,6 +160,7 @@ export interface WhatsAppChat {
   isAiActive: boolean;
   tags?: string[];
   notes?: string;
+  excludedTrainings?: string[]; // IDs dos treinamentos excluídos desta conversa
   createdAt: Date | Timestamp;
   updatedAt?: Date | Timestamp;
 }

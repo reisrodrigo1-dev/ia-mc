@@ -54,7 +54,10 @@ export default function WhatsAppChatsPage() {
   const [connectionStatus, setConnectionStatus] = useState<string>('checking');
   const [isRestoring, setIsRestoring] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [activeTraining, setActiveTraining] = useState<any>(null);
+  const [effectiveActiveTraining, setEffectiveActiveTraining] = useState<any>(null);
+  const [showExcludedTrainingsModal, setShowExcludedTrainingsModal] = useState(false);
+  const [availableTrainings, setAvailableTrainings] = useState<any[]>([]);
+  const [excludedTrainings, setExcludedTrainings] = useState<string[]>([]);
 
   useEffect(() => {
     loadConnections();
@@ -111,15 +114,7 @@ export default function WhatsAppChatsPage() {
   useEffect(() => {
     if (selectedChat) {
       loadMessages();
-      const fetchTraining = async () => {
-        try {
-          const training = await getTrainingData(selectedChat.connectionId);
-          setActiveTraining(training);
-        } catch (error) {
-          console.error('Erro ao carregar treinamento:', error);
-        }
-      };
-      fetchTraining();
+      loadTrainingsForChat();
     }
   }, [selectedChat]);
 
@@ -512,6 +507,69 @@ export default function WhatsAppChatsPage() {
     }
   };
 
+  const loadTrainingsForChat = async () => {
+    if (!selectedChat) return;
+
+    try {
+      // Carregar treinamentos disponíveis para esta conexão
+      const trainingRef = collection(db, 'whatsapp_training');
+      const trainingQuery = query(
+        trainingRef,
+        where('connectionId', '==', selectedChat.connectionId),
+        where('isActive', '==', true)
+      );
+      const trainingSnapshot = await getDocs(trainingQuery);
+      const trainings = trainingSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setAvailableTrainings(trainings);
+
+      // Carregar treinamentos excluídos desta conversa
+      const currentExcluded = selectedChat.excludedTrainings || [];
+      setExcludedTrainings(currentExcluded);
+
+      // Determinar qual treinamento está efetivamente ativo para esta conversa
+      const availableForChat = trainings.filter(t => !currentExcluded.includes(t.id));
+      const effectiveTraining = availableForChat.length > 0 ? availableForChat[0] : null; // Mostra o primeiro disponível
+      setEffectiveActiveTraining(effectiveTraining);
+    } catch (error) {
+      console.error('Erro ao carregar treinamentos:', error);
+    }
+  };
+
+  const handleSaveExcludedTrainings = async () => {
+    if (!selectedChat) return;
+
+    try {
+      await updateDoc(doc(db, 'whatsapp_chats', selectedChat.id), {
+        excludedTrainings: excludedTrainings,
+        updatedAt: Timestamp.now(),
+      });
+
+      // Atualizar o chat selecionado com os novos dados
+      const updatedChat = { ...selectedChat, excludedTrainings };
+      setSelectedChat(updatedChat);
+
+      // Recarregar treinamentos para atualizar o display
+      await loadTrainingsForChat();
+
+      setShowExcludedTrainingsModal(false);
+      alert('Treinamentos excluídos atualizados com sucesso!');
+    } catch (error) {
+      console.error('Erro ao salvar treinamentos excluídos:', error);
+      alert('Erro ao salvar alterações');
+    }
+  };
+
+  const toggleExcludedTraining = (trainingId: string) => {
+    setExcludedTrainings(prev => 
+      prev.includes(trainingId) 
+        ? prev.filter(id => id !== trainingId)
+        : [...prev, trainingId]
+    );
+  };
+
   const formatTime = (timestamp: any) => {
     if (!timestamp) return '';
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
@@ -711,10 +769,20 @@ export default function WhatsAppChatsPage() {
                       </div>
                     )}
                     <p className="text-sm text-gray-500">{selectedChat.contactNumber}</p>
-                    <p className="text-sm text-gray-500">Treinamento: {activeTraining?.name || 'Nenhum'}</p>
+                    <p className="text-sm text-gray-500">Treinamento: {effectiveActiveTraining?.name || 'Nenhum'}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowExcludedTrainingsModal(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    title="Gerenciar treinamentos excluídos"
+                  >
+                    <Bot className="w-4 h-4" />
+                    <span className="text-sm font-medium">
+                      Excluir Treinamentos ({excludedTrainings.length})
+                    </span>
+                  </button>
                   <button
                     onClick={() => toggleAI(selectedChat.id, selectedChat.isAiActive)}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
@@ -810,6 +878,113 @@ export default function WhatsAppChatsPage() {
           </div>
         )}
       </div>
+
+      {/* Modal Treinamentos Excluídos */}
+      {showExcludedTrainingsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900">
+                Gerenciar Treinamentos Excluídos
+              </h2>
+              <button
+                onClick={() => setShowExcludedTrainingsModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              <p className="text-gray-600 mb-4">
+                Marque os treinamentos que você deseja excluir desta conversa. 
+                Treinamentos excluídos não serão considerados mesmo que contenham as palavras-chave da mensagem.
+              </p>
+
+              {availableTrainings.length === 0 ? (
+                <div className="text-center py-8">
+                  <Bot className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                  <p className="text-gray-600">Nenhum treinamento ativo encontrado para esta conexão</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {availableTrainings.map((training) => (
+                    <div
+                      key={training.id}
+                      className={`p-4 border rounded-lg ${
+                        excludedTrainings.includes(training.id)
+                          ? 'border-red-200 bg-red-50'
+                          : 'border-gray-200 bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-semibold text-gray-900">{training.name}</h3>
+                            <span className={`px-2 py-1 text-xs rounded-full ${
+                              training.mode === 'always' 
+                                ? 'bg-purple-100 text-purple-800'
+                                : 'bg-blue-100 text-blue-800'
+                            }`}>
+                              {training.mode === 'always' ? 'Sempre Ativo' : 'Palavras-chave'}
+                            </span>
+                          </div>
+                          {training.description && (
+                            <p className="text-sm text-gray-600 mb-2">{training.description}</p>
+                          )}
+                          {training.keywords && training.keywords.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {training.keywords.slice(0, 5).map((keyword: string, index: number) => (
+                                <span
+                                  key={index}
+                                  className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded"
+                                >
+                                  {keyword}
+                                </span>
+                              ))}
+                              {training.keywords.length > 5 && (
+                                <span className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded">
+                                  +{training.keywords.length - 5} mais
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={excludedTrainings.includes(training.id)}
+                            onChange={() => toggleExcludedTraining(training.id)}
+                            className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                          />
+                          <span className="text-sm text-gray-700">
+                            {excludedTrainings.includes(training.id) ? 'Excluído' : 'Incluir'}
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 p-6 border-t border-gray-200 bg-gray-50">
+              <button
+                onClick={() => setShowExcludedTrainingsModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveExcludedTrainings}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Salvar Alterações
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Nova Conversa */}
       {showNewChatModal && (

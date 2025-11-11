@@ -23,6 +23,10 @@ import {
   BookOpen,
   MessageCircle,
   BarChart3,
+  FileSpreadsheet,
+  Upload,
+  Search,
+  FileCheck,
 } from 'lucide-react';
 import { useState } from 'react';
 import Link from 'next/link';
@@ -34,6 +38,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { isSuperAdmin, canCreateSector } = usePermissions();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [whatsappOpen, setWhatsappOpen] = useState(false);
+  const [editaisOpen, setEditaisOpen] = useState(false);
 
   const handleSignOut = async () => {
     await signOut();
@@ -53,6 +58,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     { name: 'Treinamento', href: '/dashboard/whatsapp/training', icon: BookOpen },
     { name: 'Conversas', href: '/dashboard/whatsapp/chats', icon: MessageCircle },
     { name: 'Analytics', href: '/dashboard/whatsapp/analytics', icon: BarChart3 },
+  ];
+
+  const editaisSubMenu = [
+    { name: 'Upload de Vídeo Aulas', href: '/dashboard/editais/upload', icon: Upload },
+    { name: 'Analisar Edital', href: '/dashboard/editais/analisar', icon: Search },
+    { name: 'Meus Editais', href: '/dashboard/editais/lista', icon: FileCheck },
   ];
 
   if (canCreateSector) {
@@ -127,6 +138,47 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             {whatsappOpen && (
               <div className="mt-1 ml-4 space-y-1">
                 {whatsappSubMenu.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = pathname === item.href;
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
+                        isActive
+                          ? 'bg-orange-600 text-white shadow-lg'
+                          : 'text-gray-700 hover:bg-gray-100 hover:text-orange-600'
+                      }`}
+                    >
+                      <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-gray-500'}`} />
+                      <span className="font-medium text-sm">{item.name}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Editais Dropdown */}
+          <div>
+            <button
+              onClick={() => setEditaisOpen(!editaisOpen)}
+              className="w-full flex items-center justify-between gap-4 px-4 py-4 rounded-xl transition-all duration-200 text-gray-700 hover:bg-gray-100 hover:text-orange-600"
+            >
+              <div className="flex items-center gap-4">
+                <FileSpreadsheet className="w-5 h-5 text-gray-500" />
+                <span className="font-medium">Editais</span>
+              </div>
+              {editaisOpen ? (
+                <ChevronDown className="w-4 h-4 text-gray-500" />
+              ) : (
+                <ChevronRight className="w-4 h-4 text-gray-500" />
+              )}
+            </button>
+            
+            {editaisOpen && (
+              <div className="mt-1 ml-4 space-y-1">
+                {editaisSubMenu.map((item) => {
                   const Icon = item.icon;
                   const isActive = pathname === item.href;
                   return (
